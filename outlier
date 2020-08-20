@@ -1,0 +1,310 @@
+import numpy as np
+from numpy import  *
+import math
+
+#输入亮度和对应的时间索引list数据，返回含有所有异常点索引的list
+def outlier(input_np):
+    n = 3  # n倍标准差
+
+    light=input_np[:,1]#不考虑误差
+    mean=light.mean()#计算亮度均值
+
+    std=np.std(input_np[:,1])
+
+    result=[]
+    i=0
+    for l in input_np[:,1]:
+        if l>mean+n*std or l<mean-n*std:
+            result.append(i)#加入异常list
+            if result[len(result)-1]>=len(input_np[:,0]):
+        i+=1
+    # print("离群点个数:",len(result))
+    # print("离群点占比:",float(len(result))/float(i))
+    # print("标准差：",std)
+    # print("均值：",mean)
+    return result#返回是第几个
+
+#输入异常点 以及完整序列
+def true_outlier(outlier,input_np):
+    n=50#用异常点左右各n个点衡量是否是误差点
+    b=5#和周围n个点差值的绝对值的平均值大于b倍标准差视为误差点剔除
+    std=np.std(input_np[:,1])
+    mean=input_np[:,1].mean()#np.mean(input_np[:,1])
+    sum=0
+    if input_np[outlier,1]>mean:
+        return False
+    for i in range(n):
+        if outlier+i+1>=len(input_np[:,0]):
+            continue
+        sum+=abs(input_np[outlier,1]-input_np[outlier+i+1,1])
+    for i in range(n):
+        if outlier - i - 1 <= len(input_np[:, 0]):
+            continue
+        sum+=abs(input_np[outlier,1]-input_np[outlier-i-1,1])
+    mean_n=float(sum)/float(n*2)
+    if mean_n>b*std:
+        #print("误差点")
+        return False
+    else:
+        #print("异常点")
+        return True
+
+#给定一个异常点序号，找左右观测边界
+def section(outlier,input_np):
+    left_boundary=0
+    right_boundary=0
+    left_num=0
+    right_num=0
+    difference=1#两个天文儒略日差difference认为是不同观测区间
+
+
+    #找右边界
+    i = 1
+    time_now = input_np[outlier, 0]
+    #print("shape",input_np.shape)
+    while(True):
+        if outlier+i>=len(input_np[:,0]):
+            #print("到达整个观测右边界")
+            right_boundary=time_now
+            right_num=outlier+i-1
+            break
+        time_next=input_np[outlier+i,0]
+        time_difference=abs(time_next-time_now)
+        if time_difference>difference:
+            #print("找到观测区间右边界")
+            right_boundary=time_now
+            right_num=outlier+i-1
+            break
+        time_now=time_next
+        i+=1
+
+    #找左边界
+    i = 1
+    time_now = input_np[outlier, 0]
+    while(True):
+        if outlier-i<0:
+            #print("到达整个观测左边界")
+            left_boundary=time_now
+            left_num=outlier-i+1
+            break
+        time_next=input_np[outlier-i,0]
+        time_difference=abs(time_next-time_now)
+        if time_difference>=difference:
+            #print("找到观测区间左边界")
+            left_boundary=time_now
+            left_num=outlier-i+1
+            break
+        time_now=time_next
+        i+=1
+    #print("左边界为",left_boundary,"右边界为",right_boundary)
+    return left_boundary,right_boundary,left_num,right_num
+
+def detect(outlier,input_np):
+
+    def minimum(outlier,input_np):
+        """"
+        判断一个点是不是极小值点
+        :return:bool
+        """
+        n=20#和周围n个点比
+        left_boundary,right_boundary,left_num,right_num=section(outlier,input_np)
+        left_min_num=left_num
+        right_min_num=right_num
+        if outlier-n>left_min_num:
+            left_min_num=outlier-n
+            #print(1)
+        if outlier+n<right_min_num:
+            right_min_num=outlier+n
+            #print(2)
+        #print(left_min_num,right_min_num)
+        if input_np[left_min_num:right_min_num+1,1].min()<input_np[outlier,1]:
+            return False
+        else:
+            return True
+
+    n=0.1
+    left_outlier_boundary_num=0
+    right_outlier_boundary_num=0
+
+    left_boundary,right_boundary,left_num,right_num=section(outlier,input_np)
+
+    #未完
+    minimum_num=0#极小值点序号
+    light = input_np[:, 1]  # 不考虑误差
+    mean = light.mean()  # 计算亮度均值
+    std = np.std(input_np[:, 1])
+
+    #找极小值点
+
+    j=0
+    flag_min=0#0表示未找到极小值点
+
+    #向右找极值点
+    while(True):
+        if outlier+j>=right_num:
+            #print("未找到极值点")
+            minimum_num=outlier+j
+            break
+        if minimum(outlier+j,input_np):
+            flag_min=1#找到极值点
+            minimum_num=outlier+j
+            break
+        else:
+            j+=1
+    j=0
+    if flag_min==0:#向右找极值点失败
+        #向左找极值点
+        while(True):
+            if outlier - j <= left_num:
+                #print("未找到极值点")
+                break
+                #minimum_num = outlier + j
+            if minimum(outlier-j,input_np):
+                flag_min=1#找到极值点
+                break
+            else:
+                j+=1
+
+
+    #找两边
+    i=-1
+    #左
+    while(True):
+        if outlier<=left_num:
+            left_outlier_boundary_num = left_num#outlier
+            break
+        if minimum_num+i<=left_num:#到该观测区间左端点
+            #print("左边提前结束")
+            left_outlier_boundary_num = left_num#minimum_num + i
+            break
+
+        if input_np[minimum_num+i,1]>mean-n*std:# and input_np[outlier+i,1]<mean+n*std:
+            left_outlier_boundary_num=minimum_num+i+1
+            break
+
+        i-=1
+
+    i=1
+    #右
+    while (True):
+        if outlier>=right_num:#到该观测区间右端点
+            right_outlier_boundary_num=right_num#outlier
+            break
+        if minimum_num+i>=right_num:#到该观测区间右端点
+            right_outlier_boundary_num=right_num#minimum_num + i
+            break
+        if input_np[minimum_num + i, 1] > mean - n * std :#and input_np[outlier + i, 1] < mean + n * std:
+            right_outlier_boundary_num = minimum_num + i-1
+            break
+        i += 1
+    num_min=minimum_num
+    left_outlier_boundary=input_np[left_outlier_boundary_num,0]
+    right_outlier_boundary=input_np[right_outlier_boundary_num,0]
+    return left_outlier_boundary_num,right_outlier_boundary_num,num_min
+
+
+
+#给定一个异常点列表，返回异常区间和
+def outlierlist_detect(outlierlist,input_np):
+    section=[]#存放所有异常区间端点num
+
+    n=50#异常区间点个数小于n忽略该异常区间 官方说得超过50个点
+    for outlier in outlierlist:
+        left_outlier_boundary_num,right_outlier_boundary_num,num_min=detect(outlier,input_np)
+        if not section:#列表空
+            temp=[left_outlier_boundary_num,right_outlier_boundary_num]
+            if right_outlier_boundary_num-left_outlier_boundary_num>n:#异常区间点个数小于n忽略该异常区间
+                section.append(temp)
+
+        else:
+            flag=0#0表示未找到
+            for j in section:
+                if j[0]<=outlier and j[1]>=outlier:
+                    flag=1#该异常区减已经被找到
+                    #print(j[0],j[1],"异常区间已经被找到")
+                    break
+            if flag==0:
+                if right_outlier_boundary_num - left_outlier_boundary_num > n:
+
+                    flag_same=0#0意味着没有重复区间
+                    for s in section:
+                        if left_outlier_boundary_num==s[0] and right_outlier_boundary_num==s[1]:
+                            flag_same=1
+                    if flag_same==0:
+                        section.append([left_outlier_boundary_num,right_outlier_boundary_num])
+            flag=0
+
+    return section
+
+
+def data_analysis(s,num_min,input_np):#异常区间，极小值序号，矩阵
+    """"
+    数据分析
+    :return:异常区间占比,异常区间左右斜率差值,极小值点与均值点的差值
+    """
+    #1、异常区间占比
+    span=s[1]-s[0]#跨度
+    length=len(input_np[:,0])
+    outliers_rate=float(span)/float(length)
+    print("异常区间占比",outliers_rate)
+
+    #2、异常区间左右斜率(横坐标非时间)
+    slope_left=(input_np[s[0],1]-input_np[num_min,1])/(num_min-s[0])
+    print("异常区间左端点星等",input_np[s[0],1])
+    print("异常区间左端点星等",input_np[s[1],1])
+
+    print(input_np[num_min,1])
+    print("异常区间左端点",s[0])
+    print("异常区间右端点",s[1])
+    slope_right=(input_np[s[1],1]-input_np[num_min,1])/(s[1]-num_min)
+    print("异常区间左右斜率",slope_left,slope_right)
+    slope_difference=slope_left-slope_right
+
+    #3、极小值点与均值点的差值
+    light=input_np[:,1]#不考虑误差
+    mean = light.mean()  # 计算亮度均值
+    std = np.std(input_np[:, 1])
+    d=mean-input_np[num_min,1]
+    print("极小值与均值的差",d)
+
+    return outliers_rate,slope_difference,d
+
+
+
+
+def o_t(input_np):
+    Result=outlier(input_np)
+    result=[]
+    i=0
+    for i in range(len(Result)):
+        if true_outlier(Result[i],input_np):
+            result.append(Result[i])#删除测量误差点
+    outlier_rate=0
+    if i==0:
+        print("无异常点")
+    else:
+        #print("异常点个数:", len(result))
+        outlier_rate=float(len(result)) / float(len(input_np[:,0]))#异常点比例
+        #print("异常点占比:", outlier_rate)
+
+    return result,outlier_rate  # result是所有异常点列表
+
+def judge(left_outlier_boundary_num, right_outlier_boundary_num, num_min,
+          left_outlier_boundary,right_outlier_boundary,outliers_rate,slope_difference,d,t1,i):
+    if outliers_rate > 0.02:  # 筛选标准1
+        slope_left = (t1[i[0], 1] - t1[num_min, 1]) / (num_min - i[0])
+        slope_right = (t1[i[1], 1] - t1[num_min, 1]) / (i[1] - num_min)
+
+        if slope_left >= 0.01 and slope_right > 0.001:  # 情况一
+            if float(slope_left) / float(slope_right) > 5:  # 5倍
+                if d > 0.2:  # 筛选标准3 官方说是0.478，此前用0.38得0.0168分,感觉0.38在样本中不佳
+                    return True
+        if slope_left>=0.01 and slope_right>=0.01:
+            if slope_left-slope_right>=0.01:
+                return True
+        else:  # 情况二
+            if slope_difference > 0.0008:  # 筛选标准2,原来是0.001
+
+                if d > 0.38:  # 筛选标准3 官方说是0.478，此前用0.38得0.0168分
+                    return True
+        return False
